@@ -74,26 +74,98 @@ typedef struct{
 }report_t;
 
 static report_t reportBuffer;
-static int      sinus = 7 << 6, cosinus = 0;
 static uchar    idleRate;   /* repeat rate for keyboards, never used for mice */
 
 
-/* The following function advances sin/cos by a fixed angle
- * and stores the difference to the previous coordinates in the report
- * descriptor.
- * The algorithm is the simulation of a second order differential equation.
- */
-static void advanceCircleByFixedAngle(void)
-{
-char    d;
+//This describes how the mouse is moved in the screent
+typedef struct {
+	int x;
+	int y;
+	int cnt;
+} vect_t;
 
-#define DIVIDE_BY_64(val)  (val + (val > 0 ? 32 : -32)) >> 6    /* rounding divide */
-    reportBuffer.dx = d = DIVIDE_BY_64(cosinus);
-    sinus += d;
-    reportBuffer.dy = d = DIVIDE_BY_64(sinus);
-    cosinus -= d;
-}
+vect_t trajectory[] = {
+	{-100, 100, 20},
+	{50, -50, 1},
 
+	{2, 0, 30},		//E Start
+	{-2, 0, 30},
+	{0, -2, 25},
+	{2, 0, 30},
+	{-2, 0, 30},
+	{0, -2, 25},
+	{2, 0, 30},		//E End
+
+	{0, 0, 10},
+	{2, 0, 20},
+
+	{0, 2, 50},		//N start
+	{0, -2, 50},
+	{1, 2, 50},
+	{0, -2, 50},		//N End
+
+	{0, 0, 10},
+	{2, 0, 20},
+
+	{2, 0, 30},		//2 Start
+	{0, 2, 25},
+	{-2, 0, 30},
+	{0, 2, 25},
+	{2, 0, 30},		//2 end
+
+	{0, 0, 10},
+	{2, 0, 20},
+
+	{0, -2, 25},		//6 start
+	{2, 0, 30},
+	{0, 2, 25},
+	{-2, 0, 30},
+	{0, -2, 50},
+	{2, 0, 25},		//6 end
+
+	{0, 0, 10},
+	{2, 0, 20},
+
+	{2, 0, 30},		//2 Start
+	{0, 2, 25},
+	{-2, 0, 30},
+	{0, 2, 25},
+	{2, 0, 30},		//2 end
+
+	{0, 0, 10},
+	{2, 0, 20},
+
+	{0, -2, 50},		//M Start
+	{2, 2, 15},
+	{2, -2, 15},
+	{0, 2, 50},		//M end
+
+	{0, 0, 10},
+	{2, 0, 20},
+
+	{0, -2, 50},		// I start end
+
+	{0, 0, 10},
+	{2, 0, 20},
+
+	{0, 2, 50},
+	{0, -2, 25},		// A start
+	{2, 0, 30},
+	{-2, 0, 30},
+	{0, -2, 25},
+	{2, 0, 30},
+	{0, 2, 50},		// A end
+
+	{0, 0, 10},
+	{2, 0, 20},
+
+	{0, -2, 50},		//U start
+	{0, 2, 50},
+	{2, 0, 30},
+	{0, -2, 50},
+
+	{0, 0, 20}
+};
 /* ------------------------------------------------------------------------- */
 
 usbMsgLen_t usbFunctionSetup(uchar data[8])
@@ -136,7 +208,6 @@ uchar   i;
      * additional hardware initialization.
      */
     odDebugInit();
-    DBG1(0x00, 0, 0);       /* debug output: main starts */
     usbInit();
     usbDeviceDisconnect();  /* enforce re-enumeration, do this while interrupts are disabled! */
     i = 0;
@@ -146,15 +217,27 @@ uchar   i;
     }
     usbDeviceConnect();
     sei();
-    DBG1(0x01, 0, 0);       /* debug output: main loop starts */
+    int trajPos = 0;
+    int trajPosCnt = 1;
     for(;;){                /* main event loop */
-        DBG1(0x02, 0, 0);   /* debug output: main loop iterates */
         wdt_reset();
         usbPoll();
         if(usbInterruptIsReady()){
             /* called after every poll of the interrupt endpoint */
-            advanceCircleByFixedAngle();
-            DBG1(0x03, 0, 0);   /* debug output: interrupt report prepared */
+
+            //Update position
+            if(trajPosCnt >= trajectory[trajPos].cnt){
+                trajPos = (trajPos + 1) % (sizeof(trajectory)/sizeof(trajectory[0]));
+                trajPosCnt = 1;
+            } else {
+                trajPosCnt++;
+            }
+
+
+            reportBuffer.dx = trajectory[trajPos].x;
+            reportBuffer.dy = trajectory[trajPos].y;
+
+            //Call interrupt routine
             usbSetInterrupt((void *)&reportBuffer, sizeof(reportBuffer));
         }
     }
